@@ -1,0 +1,5 @@
+Log file created at: 2023/02/15 09:33:59
+Running on machine: 438
+Running duration (h:mm:ss): 0:00:00
+Log line format: [IWEF]yyyymmdd hh:mm:ss.uuuuuu threadid file:line] msg
+E20230215 09:33:59.191843 16917 crc.cpp:95] ERROR: could not connect to server

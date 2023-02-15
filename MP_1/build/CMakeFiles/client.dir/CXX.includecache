@@ -29,6 +29,10 @@ string.h
 -
 interface.h
 /home/csce438/CSCE438/CSCE438MachineProblemsBrianChong/MP_1/interface.h
+iostream
+-
+string
+-
 
 /home/csce438/CSCE438/CSCE438MachineProblemsBrianChong/MP_1/interface.h
 ctype.h

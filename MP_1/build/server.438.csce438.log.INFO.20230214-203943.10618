@@ -1,0 +1,5 @@
+Log file created at: 2023/02/14 20:39:43
+Running on machine: 438
+Running duration (h:mm:ss): 0:00:00
+Log line format: [IWEF]yyyymmdd hh:mm:ss.uuuuuu threadid file:line] msg
+I20230214 20:39:43.388787 10618 crsd.cpp:39] Starting Server

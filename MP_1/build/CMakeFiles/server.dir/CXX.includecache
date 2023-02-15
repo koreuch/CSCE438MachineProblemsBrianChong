@@ -29,7 +29,15 @@ string.h
 -
 interface.h
 /home/csce438/CSCE438/CSCE438MachineProblemsBrianChong/MP_1/interface.h
+pthread.h
+-
 iostream
+-
+vector
+-
+string
+-
+map
 -
 
 /home/csce438/CSCE438/CSCE438MachineProblemsBrianChong/MP_1/interface.h
