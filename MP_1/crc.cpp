@@ -37,7 +37,7 @@ int main(int argc, char** argv)
         get_command(command, MAX_DATA);
 
 		struct Reply reply = process_command(sockfd, command);
-		std::cout << "REMOVE ME: " << reply.port << std::endl;
+		std::cout << "REMOVE ME: " << reply.status << std::endl;
 		display_reply(command, reply);
 		
 		if(reply.status == SUCCESS){
@@ -187,7 +187,32 @@ struct Reply process_command(const int sockfd, char* command)
 	// ------------------------------------------------------------
 	std::string response(response_string);
 	std::cout << response << " HERE IS RESPONSE" << std::endl;
-	return *(Reply*) response_string;
+	std::vector<std::string> response_list;
+	int strings_parsed = 0;
+	std::string substring;
+	int pos = 0;
+	char listRooms[MAX_DATA];
+	while (true){
+		if (strings_parsed == 3){
+			break;
+		}
+		pos = response.find(' ');
+		substring = response.substr(0, pos);
+		response = response.substr(pos + 1);
+		response_list.push_back(substring);
+		// std::cout << substring << " HERE" << std::endl;
+		strings_parsed += 1;
+	}
+	memcpy(listRooms, &response_string[pos], sizeof(response_string) - pos);
+	Reply reply_string;
+	memcpy(reply_string.list_room, &listRooms, sizeof(listRooms));
+	reply_string.status = static_cast<Status> (std::stoi(response_list[0]));
+	reply_string.num_member = std::stoi(response_list[1]);
+	reply_string.port = std::stoi(response_list[2]);
+
+
+	return reply_string;
+	// return *(Reply*) response_string;
 }
 
 /* 

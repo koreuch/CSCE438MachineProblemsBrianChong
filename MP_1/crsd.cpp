@@ -41,8 +41,9 @@ int main(int argc, char *argv[]){
 
     LOG(INFO) << "Starting Server";
     sockaddr_in service;
-    fd_set sockets;
+    
     //should bind using 8080
+    int num_used_ports = 0;
     service.sin_family = AF_INET;  
     service.sin_addr.s_addr = INADDR_ANY;  
     service.sin_port = htons( 8080 );
@@ -53,9 +54,19 @@ int main(int argc, char *argv[]){
     }
     // std::cout << "REMOVE ME: able to get master socket assigned\n";
 
-    if ((bind(master_socket, (sockaddr*)&service, sizeof(service))) <0 ){
-        LOG(ERROR) << "ERROR: could not bind serverside socket";
-		exit(EXIT_FAILURE);
+    // if ((bind(master_socket, (sockaddr*)&service, sizeof(service))) <0 ){
+    //     LOG(ERROR) << "ERROR: could not bind serverside socket";
+	// 	exit(EXIT_FAILURE);
+    // }
+
+    bool bind_success = false;
+    while (!bind_success){
+        if ((bind(master_socket, (sockaddr*)&service, sizeof(service))) <0 ){
+        LOG(ERROR) << "ERROR: could not bind serverside socket. Retrying";
+        }
+        else{
+            bind_success = true;
+        }
     }
 
     // std::cout << "REMOVE ME: able to bind server socket\n";
@@ -64,7 +75,7 @@ int main(int argc, char *argv[]){
         LOG(ERROR) << "ERROR: could not listen in ";
 		exit(EXIT_FAILURE);
     }
-            std::cout << master_socket << std::endl;
+            // std::cout << master_socket << std::endl;
 
     // std::thread socket_listener_thread(socketListener, master_socket);
     int last_socket;
@@ -72,15 +83,17 @@ int main(int argc, char *argv[]){
     std::vector<int> socket_list;
     std::vector<int> chat_socket_list;
     socket_list.push_back(master_socket);
-    std::map<std::string, int> chat_sockets;
+    std::vector<std::pair<std::string, int>> chat_sockets;
     char buf[MAX_DATA];
     while (true){
-        std::cout << "Waiting for messages from client\n";
+        // std::cout << "Waiting for messages from client\n";
 
+        fd_set sockets; // temporary fix
         FD_ZERO(&sockets);
         FD_SET(master_socket, &sockets);
 
         last_socket = master_socket;
+        std::vector<int> sockets_to_remove;
 
         //have a list only for the chatroom based sockets
         for (int i = 0; i < socket_list.size(); ++i){
@@ -117,47 +130,60 @@ int main(int argc, char *argv[]){
             for (int i = 1; i < socket_list.size(); ++i){
                 if (FD_ISSET(socket_list[i], &sockets)){
                     // in this case it would be to process incoming message
+                    sockets_to_remove.push_back(i);
+
                     int main_socket = socket_list[i];
-                    std::cout << "TRIED TO READ FROM THE SOCKET TWICE" << std::endl;
-                    if (read(socket_list[i], &buf, MAX_DATA) > 0){
+                    if (recv(main_socket, buf, MAX_DATA, 0) > 0){
                         // std::cout << "Message received from one of the clients";
                         // display_message(buf);
                         std::cout << "\n";
                         std::string command(buf);
                         std::vector<std::string> command_list;
 
-                        if (command.length() < 5){
-                            close(socket_list[i]);
-                            close(master_socket);
-                            LOG(ERROR) << "Improper command\n";
-                            exit(EXIT_FAILURE);
-                        }
+                        // if (command.length() < 5){
+                        //     close(socket_list[i]);
+                        //     close(master_socket);
+                        //     LOG(ERROR) << "Improper command\n";
+                        //     exit(EXIT_FAILURE);
+                        // }
                         struct Reply message_to_client;
                         int pos = 0;
+                        std::cout << "THe command sent over is " << command << std::endl;
                         while ((pos = command.find(' ')) != std::string::npos){
                             std::string substring = command.substr(0, pos);
                             command = command.substr(pos + 1);
                             command_list.push_back(substring);
-                            std::cout << substring << " HERE" << std::endl;
+                            // std::cout << substring << " HERE" << std::endl;
                         }
                         if (command.length() > 0){
                             command_list.push_back(command);
                         }
-                        for (int i = 0; i < command_list.size(); ++i){
-                            std::cout << i << std::endl;
-                            std::cout << command_list[i] << std::endl;
-                        }
+                    
+                        // for (int i = 0; i < command_list.size(); ++i){
+                        //     std::cout << i << std::endl;
+                        //     // std::cout << command_list[i] << std::endl;
+                        // }
 
                         // now doing branches depending on the commands
+                        for (auto x: command_list){
+                            std::cout << "Part of the command is " << x << std::endl;
+                        }
                         std::string client_reply_string;
                         command = command_list[0];
+                        std::string name;
                         // std::cout << "command is " << command << std::endl;
-                        std::string name = command_list[1];
+                        if (command != "LIST"){
+                            name = command_list[1];
+                        }
+
+                        std::cout << "THat and error occurs or not" << std::endl;
                         if (command == "CREATE"){
                             std::cout << name << std::endl;
                             service.sin_family = AF_INET;  
                             service.sin_addr.s_addr = INADDR_ANY;  
-                            service.sin_port = htons( 1024 );
+                            service.sin_port = 0;
+                            // num_used_ports += 1;
+                            // this way no ports are reused
 
                             //port is set to 0 since it will just use the next available port
 
@@ -166,26 +192,43 @@ int main(int argc, char *argv[]){
                                 LOG(ERROR) << "ERROR: could not create chat socket";
                                 exit(EXIT_FAILURE);
                             }
-                            if ((bind(chat_socket, (sockaddr*)&service, sizeof(service))) <0 ){
-                                LOG(ERROR) << "ERROR: could not bind chat socket";
-                                exit(EXIT_FAILURE);
+
+                            bool bind_success = false;
+                            while (!bind_success){
+                                if ((bind(chat_socket, (sockaddr*)&service, sizeof(service))) <0 ){
+                                LOG(ERROR) << "ERROR: could not bind chat socket. Retrying";
+                                }
+                                else{
+                                    bind_success = true;
+                                }
                             }
+
+
                             if ((listen(chat_socket, 20)) == -1){
                                 LOG(ERROR) << "ERROR: could not listen in on chat socket";
                                 exit(EXIT_FAILURE);
                             }
-                            chat_socket_list.push_back(chat_socket);
-                            // printf("port number %d\n", ntohs(service.sin_port));
-                            std::cout << "Made it here: " << ntohs(service.sin_port) << std::endl;
-                            chat_sockets[name] = ntohs(service.sin_port);
-
-                            if (chat_sockets.find(name) == chat_sockets.end()){
+                            bool found = false;
+                            for (auto x : chat_sockets){
+                                std::cout << "PORT NUM: " << x.second << std::endl;
+                                if (name == x.first){
+                                    found = true;
+                                }
+                            }
+                            if (!found){
+                                chat_socket_list.push_back(chat_socket);
+                                // printf("port number %d\n", ntohs(service.sin_port));
+                                std::cout << "The name of the room is " << name << std::endl;
+                                chat_sockets.push_back({name,ntohs(service.sin_port)});
+                            }
+                    
+                            if (found){
                                 client_reply_string = std::to_string(1);
-                                client_reply_string += ',';
+                                client_reply_string += ',';               
                             }
                             else{
-                                client_reply_string = std::to_string(1);
-                                client_reply_string += ',';
+                                client_reply_string = std::to_string(0);
+                                client_reply_string += ',';           
                             }
                             client_reply_string += std::to_string(0);
                             client_reply_string += ",";
@@ -202,9 +245,13 @@ int main(int argc, char *argv[]){
 
                         }
                         else if (command == "LIST"){
-
+                            client_reply_string = ",,,";
+                            for(int j = 0; j < chat_sockets.size(); ++j){
+                                std::cout << chat_sockets[j].first << "THIS IS THE KEY" << std::endl;
+                                client_reply_string += (std::string(chat_sockets[j].first) + ", "); 
+                            }
                         }
-                        std::cout << "came here again" << std::endl;
+                        std::cout << "The client reply string is " << client_reply_string << std::endl;
                         send(main_socket, client_reply_string.c_str(), MAX_DATA, 0);
                         
                     }//end reading in request
@@ -215,7 +262,26 @@ int main(int argc, char *argv[]){
 
                 }
             }
-        } 
+        }
+        // std::cout << "Size of the socket list is " << socket_list.size() << std::endl;
+        // std::cout << "Size of sockets to remove is " << sockets_to_remove.size() << std::endl;
+
+        // for (int i = 0; i < sockets_to_remove.size(); ++i){
+        //     std::cout << "Removing socket : " << sockets_to_remove[i] << std::endl;
+        // }
+        for (int i = 0; i< socket_list.size(); ++i){
+            std::cout << socket_list[i] << std::endl;
+            // std::cout << "Socket here" << std::endl;
+        }
+
+        for (int i = 0; i < sockets_to_remove.size(); ++i){ // removing the sockets that have already communicated once to server
+            // std::cout << master_socket << std::endl;
+            // std::cout << socket_list[i] << std::endl;
+
+            socket_list.erase(socket_list.begin() +sockets_to_remove[i], socket_list.begin() + (sockets_to_remove[i] + 1));
+            // close(socket_list[i]);
+        }
+        sockets_to_remove.clear();
     }
 
     return 0;
