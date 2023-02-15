@@ -11,6 +11,9 @@
 #include <string.h>
 #include "interface.h"
 
+#include<iostream>
+#include<string>
+
 
 int connect_to(const char *host, const int port);
 struct Reply process_command(const int sockfd, char* command);
@@ -34,6 +37,7 @@ int main(int argc, char** argv)
         get_command(command, MAX_DATA);
 
 		struct Reply reply = process_command(sockfd, command);
+		std::cout << "REMOVE ME: " << reply.port << std::endl;
 		display_reply(command, reply);
 		
 		if(reply.status == SUCCESS){
@@ -181,7 +185,8 @@ struct Reply process_command(const int sockfd, char* command)
     // "list" is a string that contains a list of chat rooms such 
     // as "r1,r2,r3,"
 	// ------------------------------------------------------------
-
+	std::string response(response_string);
+	std::cout << response << " HERE IS RESPONSE" << std::endl;
 	return *(Reply*) response_string;
 }
 
