@@ -1,0 +1,38 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/csce438/CSCE438/CSCE438MachineProblemsBrianChong/MP_1/crsd.cpp
+glog/logging.h
+-
+arpa/inet.h
+-
+netdb.h
+-
+netinet/in.h
+-
+unistd.h
+-
+sys/types.h
+-
+sys/time.h
+-
+stdio.h
+-
+stdlib.h
+-
+string.h
+-
+interface.h
+/home/csce438/CSCE438/CSCE438MachineProblemsBrianChong/MP_1/interface.h
+iostream
+-
+
+/home/csce438/CSCE438/CSCE438MachineProblemsBrianChong/MP_1/interface.h
+ctype.h
+-
+
