@@ -167,10 +167,7 @@ int main(int argc, char *argv[]){
                         //     // std::cout << command_list[i] << std::endl;
                         // }
 
-                        // now doing branches depending on the commands
-                        for (auto x: command_list){
-                            std::cout << "Part of the command is " << x << std::endl;
-                        }
+
                         command = command_list[0];
                         std::string name;
                         // std::cout << "command is " << command << std::endl;
@@ -178,7 +175,7 @@ int main(int argc, char *argv[]){
                             name = command_list[1];
                         }
 
-                        std::cout << "THat and error occurs or not" << std::endl;
+                        // std::cout << "THat and error occurs or not" << std::endl;
                         if (command == "CREATE"){
                             std::cout << name << std::endl;
                             service.sin_family = AF_INET;  
@@ -214,7 +211,6 @@ int main(int argc, char *argv[]){
                             
                             bool found = false;
                             for (auto x : chat_sockets){
-                                std::cout << "PORT NUM: " << x.second << std::endl;
                                 if (name == x.first){
                                     found = true;
                                 }
@@ -224,7 +220,7 @@ int main(int argc, char *argv[]){
                             if (!found){
                                 chat_socket_list.push_back(copy_socket);
                                 // printf("port number %d\n", ntohs(service.sin_port));
-                                std::cout << "The name of the room is " << name << std::endl;
+                                // std::cout << "The name of the room is " << name << std::endl;
                                 socklen_t sockLength = sizeof(service);
 
                                 getsockname(copy_socket, (sockaddr*)&service, &sockLength);
@@ -234,35 +230,88 @@ int main(int argc, char *argv[]){
                     
                             if (found){
                                 client_reply_string = std::to_string(1);
-                                client_reply_string += ',';               
+                                client_reply_string += ' ';               
                             }
                             else{
                                 client_reply_string = std::to_string(0);
-                                client_reply_string += ',';           
+                                client_reply_string += ' ';           
                             }
 
                             client_reply_string += std::to_string(0);
-                            client_reply_string += ",";
+                            client_reply_string += " ";
                             client_reply_string += std::to_string(port_number);
-                            client_reply_string += ",";
+                            client_reply_string += " ";
                             client_reply_string += "noList";
                             // std::cout << "clientReplyString: " << client_reply_string << std::endl;
                             
                         }
                         else if (command == "JOIN"){
-                            
+                            int port_no;
+                            int succeed = 1;
+                            for (auto x: chat_sockets){
+                                if (x.first == name){
+                                    port_no = x.second;
+                                    succeed = 0;
+                                }
+                            }
+                            client_reply_string = std::to_string(succeed);
+                            client_reply_string += ' '; 
+                            client_reply_string += std::to_string(0);
+                            client_reply_string += " ";
+                            client_reply_string += std::to_string(port_no);
+                            client_reply_string += " ";
+                            client_reply_string += "noList";
                         }
                         else if (command == "DELETE"){
+                            // havne't implemented yet
+                            std::cout << name << std::endl;
+                            bool deleted = false;
+                            int index = -1;
+                            for (int a = 0; a < chat_sockets.size(); ++a){
+                                if (chat_sockets[a].first == name){
+                                    index = a;
+                                    deleted = true;
+                                }
+                            }
+                            if (deleted){
+                                chat_sockets.erase(chat_sockets.begin() + index, chat_sockets.begin() + index + 1);
+                                
+                                client_reply_string = std::to_string(0);
+                                client_reply_string += ' '; 
+                                client_reply_string += std::to_string(0);
+                                client_reply_string += " ";
+                                client_reply_string += std::to_string(0);
+                                client_reply_string += " ";
+                                client_reply_string += std::to_string(0);
+                            }
+                            else{
+                                client_reply_string = std::to_string(1);
+                                client_reply_string += ' '; 
+                                client_reply_string += std::to_string(0);
+                                client_reply_string += " ";
+                                client_reply_string += std::to_string(0);
+                                client_reply_string += " ";
+                                client_reply_string += std::to_string(0);
+                            }
+
 
                         }
                         else if (command == "LIST"){
-                            client_reply_string = ",,,";
+                            client_reply_string = std::to_string(0);
+                            client_reply_string += ' '; 
+                            client_reply_string += std::to_string(0);
+                            client_reply_string += " ";
+                            client_reply_string += std::to_string(0);
+                            client_reply_string += " ";
+                            std::cout << "size of chat sockets" << chat_sockets.size() << std::endl;
                             for(int j = 0; j < chat_sockets.size(); ++j){
-                                std::cout << chat_sockets[j].first << "THIS IS THE KEY" << std::endl;
-                                client_reply_string += (std::string(chat_sockets[j].first) + ", "); 
+                                client_reply_string = client_reply_string + std::string(chat_sockets[j].first) + "-"; 
+                                std::cout << "Socket being added is " << chat_sockets[j].first << std::endl;
                             }
+                            client_reply_string = client_reply_string.substr(0, client_reply_string.length() - 1);
                         }
-                        std::cout << "The client reply string is " << client_reply_string << std::endl;
+
+
                         send(main_socket, client_reply_string.c_str(), MAX_DATA, 0);
                         
                     }//end reading in request
@@ -281,7 +330,7 @@ int main(int argc, char *argv[]){
         //     std::cout << "Removing socket : " << sockets_to_remove[i] << std::endl;
         // }
         for (int i = 0; i< socket_list.size(); ++i){
-            std::cout << socket_list[i] << std::endl;
+            // std::cout << socket_list[i] << std::endl;
             // std::cout << "Socket here" << std::endl;
         }
 
@@ -300,4 +349,4 @@ int main(int argc, char *argv[]){
 
 }
 
-// THis is just me adding a comment for git to make a branch for MP1
+// THis is just  adding a comment for git to make a branch for MP1

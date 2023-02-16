@@ -186,29 +186,49 @@ struct Reply process_command(const int sockfd, char* command)
     // as "r1,r2,r3,"
 	// ------------------------------------------------------------
 	std::string response(response_string);
-	std::cout << response << " HERE IS RESPONSE" << std::endl;
-	std::vector<std::string> response_list;
+	// std::cout << response << " HERE IS RESPONSE" << std::endl;
 	int strings_parsed = 0;
 	std::string substring;
 	int pos = 0;
 	char listRooms[MAX_DATA];
+	std::string response_list[4];
+	Reply reply_string;
+	std::string list_of_rooms;
 	while (true){
-		if (strings_parsed == 3){
+		if (strings_parsed == 4){
+			pos = response.find(' ');
 			break;
 		}
 		pos = response.find(' ');
 		substring = response.substr(0, pos);
+		std::string workingString = substring;
 		response = response.substr(pos + 1);
-		response_list.push_back(substring);
-		// std::cout << substring << " HERE" << std::endl;
+		if (strings_parsed == 2){
+			reply_string.port = std::stoi(substring);
+		}
+		else if (strings_parsed == 1){
+			reply_string.num_member = std::stoi(substring);
+		}
+		else if (strings_parsed == 0){
+			reply_string.status = static_cast<Status>(std::stoi(substring));
+		}
+		else{
+			// reply_string.status = static_cast<Status>(std::stoi(substring));
+			std::cout << substring << "This is the rest of the string" << std::endl;
+			list_of_rooms = substring;
+		}	
 		strings_parsed += 1;
 	}
-	memcpy(listRooms, &response_string[pos], sizeof(response_string) - pos);
-	Reply reply_string;
-	memcpy(reply_string.list_room, &listRooms, sizeof(listRooms));
-	reply_string.status = static_cast<Status> (std::stoi(response_list[0]));
-	reply_string.num_member = std::stoi(response_list[1]);
-	reply_string.port = std::stoi(response_list[2]);
+	char list_of_rooms_c[list_of_rooms.length() +1];
+	for (int i = 0; i < list_of_rooms.length(); ++i){
+		list_of_rooms_c[i] = list_of_rooms[i];
+	}
+	strcpy(reply_string.list_room, list_of_rooms_c);
+	// reply_string.list_room = list_of_rooms_c;
+	// reply_string.list_room = listRoom;
+
+	// std::cout << reply_string.port <<"PORT HERE "<< std::endl;
+
 
 
 	return reply_string;
