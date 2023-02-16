@@ -20,6 +20,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <sys/socket.h>
 //for my own use, will remove the above later
 
 //including all the header files that are also in the client side code
@@ -59,13 +60,13 @@ int main(int argc, char *argv[]){
 	// 	exit(EXIT_FAILURE);
     // }
 
-    bool bind_success = false;
-    while (!bind_success){
+    bool bind_succeed = false;
+    while (!bind_succeed){
         if ((bind(master_socket, (sockaddr*)&service, sizeof(service))) <0 ){
         LOG(ERROR) << "ERROR: could not bind serverside socket. Retrying";
         }
         else{
-            bind_success = true;
+            bind_succeed = true;
         }
     }
 
@@ -96,6 +97,8 @@ int main(int argc, char *argv[]){
         std::vector<int> sockets_to_remove;
 
         //have a list only for the chatroom based sockets
+        std::string client_reply_string;
+
         for (int i = 0; i < socket_list.size(); ++i){
             last_socket = socket_list[i];
             //this was just to check that new sockets weren't constnatlyl being created
@@ -168,7 +171,6 @@ int main(int argc, char *argv[]){
                         for (auto x: command_list){
                             std::cout << "Part of the command is " << x << std::endl;
                         }
-                        std::string client_reply_string;
                         command = command_list[0];
                         std::string name;
                         // std::cout << "command is " << command << std::endl;
@@ -187,15 +189,15 @@ int main(int argc, char *argv[]){
 
                             //port is set to 0 since it will just use the next available port
 
-                            int chat_socket;
-                            if ((chat_socket = socket(AF_INET, SOCK_STREAM,IPPROTO_TCP)) == 0){
+                            int copy_socket;
+                            if ((copy_socket = socket(AF_INET, SOCK_STREAM,IPPROTO_TCP)) == 0){
                                 LOG(ERROR) << "ERROR: could not create chat socket";
                                 exit(EXIT_FAILURE);
                             }
 
                             bool bind_success = false;
                             while (!bind_success){
-                                if ((bind(chat_socket, (sockaddr*)&service, sizeof(service))) <0 ){
+                                if ((bind(copy_socket, (sockaddr*)&service, sizeof(service))) <0 ){
                                 LOG(ERROR) << "ERROR: could not bind chat socket. Retrying";
                                 }
                                 else{
@@ -204,10 +206,12 @@ int main(int argc, char *argv[]){
                             }
 
 
-                            if ((listen(chat_socket, 20)) == -1){
+                            if ((listen(copy_socket, 20)) == -1){
                                 LOG(ERROR) << "ERROR: could not listen in on chat socket";
                                 exit(EXIT_FAILURE);
                             }
+                            // have socket activated for listening now
+                            
                             bool found = false;
                             for (auto x : chat_sockets){
                                 std::cout << "PORT NUM: " << x.second << std::endl;
@@ -215,11 +219,17 @@ int main(int argc, char *argv[]){
                                     found = true;
                                 }
                             }
+                            int port_number;
+
                             if (!found){
-                                chat_socket_list.push_back(chat_socket);
+                                chat_socket_list.push_back(copy_socket);
                                 // printf("port number %d\n", ntohs(service.sin_port));
                                 std::cout << "The name of the room is " << name << std::endl;
-                                chat_sockets.push_back({name,ntohs(service.sin_port)});
+                                socklen_t sockLength = sizeof(service);
+
+                                getsockname(copy_socket, (sockaddr*)&service, &sockLength);
+                                port_number = ntohs(service.sin_port);
+                                chat_sockets.push_back({name,port_number});
                             }
                     
                             if (found){
@@ -230,9 +240,10 @@ int main(int argc, char *argv[]){
                                 client_reply_string = std::to_string(0);
                                 client_reply_string += ',';           
                             }
+
                             client_reply_string += std::to_string(0);
                             client_reply_string += ",";
-                            client_reply_string += std::to_string(ntohs(service.sin_port));
+                            client_reply_string += std::to_string(port_number);
                             client_reply_string += ",";
                             client_reply_string += "noList";
                             // std::cout << "clientReplyString: " << client_reply_string << std::endl;
