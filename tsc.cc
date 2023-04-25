@@ -36,6 +36,7 @@ using snsCoordinator::Users;
 using snsCoordinator::FollowSyncs;
 using snsCoordinator::Heartbeat;
 
+std::string cport; // just so I can have it whenever
 
 std::unordered_map<std::string, std::string> followerBank = {};
 
@@ -189,6 +190,7 @@ class Client : public IClient
                     break;
             }
         } else {
+            // here we can do a heartbeat to the coordinator to get the slave port
             std::cout << "grpc failed: " << reply.grpc_status.error_message() << std::endl;
         }
     }
@@ -323,6 +325,24 @@ void Client::updated_run()
             std::cout << "Now you are in the timeline" << std::endl;
             processTimeline();
         }
+        else if (!reply.grpc_status.ok()){
+            std::cout << "Command not able to get through, re-routing you to different server" << std::endl;
+            Heartbeat *hb = new Heartbeat; // it might be bad practice, whatever it's not working right now
+            getSlavePort(hb);
+            std::string login_info = hostname + ":" + hb -> server_port(); /// try the literal port when failing
+            // std::cout << "The stub is created at the beginning without doing anything" << std::endl;
+            stub_ = std::unique_ptr<SNSService::Stub>(SNSService::NewStub(
+               grpc::CreateChannel(
+                    login_info, grpc::InsecureChannelCredentials())));    
+            // retry again after this        
+
+            //this is just loggin in again to another server
+            Request request;
+            request.set_username(username);
+            Reply reply;
+            ClientContext context;
+            Status status = stub_->Login(&context, request, &reply);
+        }
     }
 }
 
@@ -344,6 +364,7 @@ int Client::connectTo()
 	// ------------------------------------------------------------
     // std::cout << "WHy is this not showing up" << std::endl;
     std::string login_info = hostname + ":" + port;
+    // std::cout << "get rid of this port is " << port << std::endl;
     // std::cout << "The stub is created at the beginning without doing anything" << std::endl;
     stub_ = std::unique_ptr<SNSService::Stub>(SNSService::NewStub(
                grpc::CreateChannel(
@@ -387,7 +408,7 @@ void Client::getSlavePort(Heartbeat* hb)
 
     stream->Write(heartBeat);
     stream->Read(&heartBeatReceived);
-    hb = &heartBeatReceived; // we can provide a heartbeat and then get a heartbeat returned to us 
+    hb -> set_server_port(heartBeatReceived.server_port());; // we can provide a heartbeat and then get a heartbeat returned to us 
     // with server info
 }
 

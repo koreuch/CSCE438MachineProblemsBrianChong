@@ -215,6 +215,8 @@ class SNSCoordinatorImpl : public SNSCoordinator::Service {
      while(stream->Read(&heartBeat)) {
       // std::cout << &timeStamps << " Timestamps here in heartBeatHandler" << std::endl;
       //handling heartbeats from the request handling server
+
+      /// i use the server ports here as a code for the coordinator to know what information to provide
       if (heartBeat.server_port() != "-1" && heartBeat.server_port() != "-2" && 
       heartBeat.server_port() != "-3" && heartBeat.server_port() != "-4"){
         // std::cout << "this should update every 10 seconds" << std::endl;
@@ -268,6 +270,7 @@ class SNSCoordinatorImpl : public SNSCoordinator::Service {
           // the -1 here will notify the sync process that not all the heartbeats form the
           // syncs have been received, i.e. we don't know all the sync ports 
         }// end if
+
         else{
         std::string syncPortList = "";
         for (std::string s : syncPorts){
@@ -377,9 +380,18 @@ void timeCheck(std::vector<std::pair<std::string, std::string>>* listOfServers,
             std::string ip = "localhost"; // I'm doing this on one machine.
             std::string slave_port = (*listOfServers)[index].second;
 
-            std::cout << x.first << "  " << time<< std::endl;
-            // notifySlave(ip, slave_port);
-            std::cout << "We reached this point" << std::endl;
+            (*listOfServers)[index].first = (*listOfServers)[index].second;
+            // ^ after this switch, clients when requesting the master server from
+            // the coordinator will receie the slave port. 
+            // the .first here is the place where the master server is kept
+
+
+            // std::cout << x.first << "  " << time<< std::endl;
+            notifySlave(ip, slave_port);
+            // this is for the slave to start sending heartbeats as a master server
+
+            
+            // std::cout << "We reached this point" << std::endl;
             // notifySlave(ip, slave_port);
             // I could do some stuff to get it dynamically, but I don't want
             //to do that with limited time
