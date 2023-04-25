@@ -84,6 +84,8 @@ using snsCoordinator::SNSCoordinator;
 // std::pair<int, int>s = {0, 0};
 // std::pair<int, int>t = {0, 0};
 
+int heartBeatCount = 0;
+
 std::map<std::string, std::string> foreign_followers1;
 std::map<std::string, std::string> foreign_followers2;
 std::map<std::string, std::string> foreign_followers3;
@@ -97,7 +99,14 @@ std::vector<std::string> clients3;
 
 std::vector<std::string> syncPorts = {"nothing", "nothing", "nothing"};
 
-
+int vectorContains(std::vector<std::string> vec, std::string c){
+    for (std::string a : vec){
+        if (a == c){
+            return 1;
+        }
+    }
+    return 0;
+}
 
 // just taking the class from the tsc.cc file and defining fxn's with nonsense implemntations for time
 class coordinatorClient : public IClient
@@ -190,12 +199,17 @@ class SNSCoordinatorImpl : public SNSCoordinator::Service {
     // std::cout << "HandleHeartBeats function on coordinator" << std::endl;
     Heartbeat heartBeat;
 
-    for (int i = 0; i < (*listOfServers).size(); ++i){
-      std::cout << "Server: " << (*listOfServers)[i].first;
-      std::cout << "Server: " << (*listOfServers)[i].second;
-    }
-    std::cout <<std::endl;
-
+    // for (int i = 0; i < (*listOfServers).size(); ++i){
+    //   std::string n1 = (*listOfServers)[i].first;
+    //   std::string n2 = (*listOfServers)[i].second;
+    //   std::cout << "Server: " << (*listOfServers)[i].first;
+    //   std::cout << "Server: " << (*listOfServers)[i].second;
+    //   if (n1 != "nothing" && n2 != "nothing"){
+    //     std::cout << "\n-------------Received all the ports-------------\n" << std::endl;
+    //   }
+    // }
+    // std::cout <<std::endl;
+    // these std:cout were used for testing purpsoes
 
 
      while(stream->Read(&heartBeat)) {
@@ -204,6 +218,8 @@ class SNSCoordinatorImpl : public SNSCoordinator::Service {
       if (heartBeat.server_port() != "-1" && heartBeat.server_port() != "-2" && 
       heartBeat.server_port() != "-3" && heartBeat.server_port() != "-4"){
         // std::cout << "this should update every 10 seconds" << std::endl;
+
+        
         google::protobuf::Timestamp temptime = heartBeat.timestamp();
         std::time_t time = temptime.seconds();
         // std::cout << "timeT " << time << std::endl;
@@ -246,22 +262,35 @@ class SNSCoordinatorImpl : public SNSCoordinator::Service {
         syncPorts[heartBeat.server_id()] = heartBeat.server_ip();
         // we're sending back multiple ports here
         //here we're just adding the syncport to the list of syncports to be returned to the synchronizers later
-        stream->Write(heartBeat);
-        // std::cout << "wrote the port " << heartBeat.server_ip() << " TO the coordinator at position " << heartBeat.server_id() << std::endl;
-
-      }
-      else if (heartBeat.server_port() == "-4"){
-
+        if (vectorContains(syncPorts, "nothing")){
+          heartBeat.set_server_port("-1");
+          stream->Write(heartBeat);
+          // the -1 here will notify the sync process that not all the heartbeats form the
+          // syncs have been received, i.e. we don't know all the sync ports 
+        }// end if
+        else{
         std::string syncPortList = "";
         for (std::string s : syncPorts){
           syncPortList += (s + "+");
         }
-        heartBeat.set_server_ip((*listOfServers)[heartBeat.server_id()].first); // this is needed to
-        //contact our master server for it's clients later
         heartBeat.set_server_port(syncPortList);
-        stream->Write(heartBeat);
+          stream->Write(heartBeat);
+          // here we are sending back the list of syncPOrts as a string
 
+        }//end else
       }
+      // else if (heartBeat.server_port() == "-4"){
+
+      //   std::string syncPortList = "";
+      //   for (std::string s : syncPorts){
+      //     syncPortList += (s + "+");
+      //   }
+      //   heartBeat.set_server_ip((*listOfServers)[heartBeat.server_id()].first); // this is needed to
+      //   //contact our master server for it's clients later
+      //   heartBeat.set_server_port(syncPortList);
+      //   stream->Write(heartBeat);
+
+      // } // this is outdated functionality
     }
 
 

@@ -9,6 +9,7 @@
 #include<glog/logging.h>
 #include <algorithm>
 #include <unordered_map>
+#include <unordered_set>
 #define log(severity, msg) LOG(severity) << msg; google::FlushLogFiles(google::severity); 
 
 #include "sns.grpc.pb.h"
@@ -84,7 +85,7 @@ class Client : public IClient
         // You can have an instance of the client stub
         // as a member variable.
         std::unique_ptr<SNSService::Stub> stub_;
-        std::string foreignClients;
+        std::string foreignClients = ""; // to not cause a bug
         std::vector<std::string> fc_vector = {};
 
         IReply Login();
@@ -153,16 +154,23 @@ class Client : public IClient
                         for (std::string room : reply.all_users) {
                             std::cout << room << ", ";
                         }
+                        // appending the foreign clients that were received from the 
+                        // call getforeignclients in the ::list command
+                        std::cout << foreignClients << std::endl; // just appending the list of foreign clients here
                         std::cout << "\nFollowers: ";
+
                         for (std::string room : reply.followers) {
                             std::cout << room << ", ";
                         }
+                        // eventually we can appending the string of this clients followers later on
                         std::cout << std::endl;
-                        std::cout << "Clients on other Clusters: " << foreignClients << std::endl;
+                        
                     }
                     break;
                 case FAILURE_ALREADY_EXISTS:
                     std::cout << "Input username already exists, command failed\n";
+                    // std::cout << "I'm guessing the error comes froms this" << std::endl;
+
                     break;
                 case FAILURE_NOT_EXISTS:
                     std::cout << "Input username does not exists, command failed\n";
@@ -449,7 +457,6 @@ IReply Client::processCommand(std::string& input)
         std::string argument = input.substr(index+1, (input.length()-index));
 
         if (cmd == "FOLLOW") {
-            std::cout << "Trying to follow 4 from 0,3" << std::endl;
             return Follow(argument);
         } else if(cmd == "UNFOLLOW") {
             return UnFollow(argument);
@@ -495,7 +502,7 @@ void Client::processTimeline()
 
 IReply Client::List() {
     //Data being sent to the server
-    getForeignClients(username); // this will set the foreignClients private data member 
+    // getForeignClients(username); // this will set the foreignClients private data member 
 
     Request request;
     request.set_username(username);
@@ -522,6 +529,11 @@ IReply Client::List() {
             ire.followers.push_back(s);
         }
     }
+
+    ClientContext context1;
+    Reply reply;
+    Status status1 = stub_->getForeignClients(&context1, request, &reply);
+    foreignClients = reply.msg();
     return ire;
 }
         
@@ -532,16 +544,7 @@ IReply Client::Follow(const std::string& username2) {
 
     Reply reply;
     ClientContext context;
-    if (vectorContains(fc_vector, username2)){
-        IReply ire; ire.grpc_status = Status::OK;
-        ire.comm_status = SUCCESS;
-        // have to set both of these codes to success since we have the name of 
-        // a foreign node locally through the synchronizer
-        request.set_username(username + "-" + username2);
-        Status status = stub_-> sendFollows(&context, request, &reply);
-        return ire;
-    }
-    else{
+
     Status status = stub_->Follow(&context, request, &reply);
 
     IReply ire; ire.grpc_status = status;
@@ -557,7 +560,7 @@ IReply Client::Follow(const std::string& username2) {
         ire.comm_status = FAILURE_UNKNOWN;
     }
     return ire;
-    }
+    // }
 }
 
 IReply Client::UnFollow(const std::string& username2) {

@@ -9,6 +9,12 @@
 #include<glog/logging.h>
 #include<algorithm>
 #include <mutex>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <experimental/filesystem>
+#include <fstream>
+
+namespace fs = std::experimental::filesystem;
 
 #define log(severity, msg) LOG(severity) << msg; google::FlushLogFiles(google::severity); 
 
@@ -37,10 +43,14 @@ using snsCoordinator::Users;
 using snsCoordinator::FollowSyncs;
 using snsCoordinator::Heartbeat;
 
+time_t foreignClientModTime = 0;
+time_t followerModTime = 0;
+
 
 std::vector<std::string> foreignClients = {};
 std::mutex client_lock;
 
+std::string ID; 
 
 std::string vecToString(std::vector<std::string> v){
     std::string returnString = "";
@@ -50,6 +60,11 @@ std::string vecToString(std::vector<std::string> v){
     }
     return returnString;
 }
+
+// std::vector<std::string> serializeFile(){
+
+// }
+
 
 
 
@@ -80,36 +95,62 @@ class syncService final : public SNSService::Service{ // update this so that it 
     // std::cout <<"Want to make sure that this function is running" << std::endl;
 
     // std::cout << request -> username() << std::endl
-    ;
-    std::string client_list = request -> username(); // not the username, but the list of clients from a differnt cluster
-    std::vector<std::string> client_vector = splitString(client_list);
-    client_lock.lock();
+    
+    int id = std::stoi(ID);
 
-    // checking here in locked section that we can add clients to synchronizers db
-    if (!foreignClients.empty()){
-        for (int i = 0; i < client_vector.size(); ++i){
-            int found = 0;
-            for (int j = 0; j < foreignClients.size(); ++j){
-                if (foreignClients[j] == client_vector[i]){
-                    found = 1;
-                }
-            }
-            if (found == 0){
-                foreignClients.push_back(client_vector[i]);
-            }
-        }
+    std::string fileName = "foreignClients_";
+    if (id % 3 == 0){
+        fileName += "0.txt";
+    }
+    else if (id % 3 == 1){
+        fileName += "1.txt";
     }
     else{
-        foreignClients = client_vector;
+        fileName += "2.txt";
     }
-    client_lock.unlock();
 
-    for (std::string newClient: foreignClients){
-        std::cout << newClient << std::endl;
-        std::cout << "checking " << std::endl;
-    }
+    struct stat modTime;
+
+    std::string client_list = request -> username(); // not the username, but the list of clients from a differnt cluster
+    // std::vector<std::string> client_vector = splitString(client_list);
+    // // client_lock.lock();
+
+    // // checking here in locked section that we can add clients to synchronizers db
+    // if (!foreignClients.empty()){
+    //     for (int i = 0; i < client_vector.size(); ++i){
+    //         int found = 0;
+    //         for (int j = 0; j < foreignClients.size(); ++j){
+    //             if (foreignClients[j] == client_vector[i]){
+    //                 found = 1;
+    //             }
+    //         }
+    //         if (found == 0){
+    //             foreignClients.push_back(client_vector[i]);
+    //         }
+    //     }
+    // }
+    // else{
+    //     foreignClients = client_vector;
+    // }
+    // client_lock.unlock();
+
+    // // std::cout << "Sync id is " << ID << std::endl; // for testin gpurposes delte later
+    // // for (std::string newClient: foreignClients){
+    // //     std::cout << std::endl;
+    // //     std::cout << newClient << std::endl;
+    // //     std::cout << "checking " << std::endl;
+    // // }
     
+    std::string local_clients = "local_clients_" + ID + ".txt";
+    // we want to add a client to the file each time that one login so the syncer can send this
+    // info to other files
+    std::ofstream foreign_clients_file(fileName,std::ios::app|std::ios::out|std::ios::in);
+    foreign_clients_file << client_list;
+    std::cout << "Adding to the foreign file" << std::endl;
 
+    foreign_clients_file.close();
+
+    // we send the lock back to the coordinator here
 
 
     return Status::OK;
@@ -124,7 +165,6 @@ class syncService final : public SNSService::Service{ // update this so that it 
 };
 
 void runSyncService(std::string port_no){
-    // std::cout << "is this even running" << std::endl;
     syncService sc;
     std::string server_address = "0.0.0.0:"+port_no;
 
@@ -197,8 +237,6 @@ int main(int argc, char** argv) {
     std::string syncId = "0";
     std::string port = "3010";
     std::string syncPort = "3020"; // set temorarrily
-    
-
     // the username will always be an int for this implementation
 
     int opt = 0;
@@ -216,6 +254,9 @@ int main(int argc, char** argv) {
                 std::cerr << "Invalid Command Line Argument\n";
         }
     }
+
+    ID = syncId; // this is for testing purposes, comment  out later
+
     std::string log_file_name = std::string("sync-") + syncId;
     google::InitGoogleLogging(log_file_name.c_str());
     log(INFO, "Logging Initialized. Synchronizer starting...");
@@ -226,6 +267,7 @@ int main(int argc, char** argv) {
     sc.sync(syncId, port, hostname, syncPort);
 
     syncRequestHandler.join();
+
     return 0;
 
 }
@@ -233,13 +275,7 @@ int main(int argc, char** argv) {
 
 void syncClient::sync(std::string syncId, std::string port, std::string hostname, std::string syncPort){
 
-// all the client information across servers
-    std::vector<std::string> nativeList;
-
-
-/// end of client information across servers
-
-///find diff will be useful later
+    std::cout << "reached inside the sync function, this is happening for a reason you aren't crazy" << std::endl;
 
     Request request;
     request.set_username(syncId);
@@ -253,133 +289,124 @@ void syncClient::sync(std::string syncId, std::string port, std::string hostname
     // first contact the coordinator 
     Heartbeat hb;
     Heartbeat HB;
-
     hb.set_server_port("-3");
     hb.set_server_id(std::stoi(syncId)); // to tell the coordinator our id, we'll use this field 
     hb.set_server_ip(syncPort);// we'll use this field to tell the coordinator the port.
     // ^i know that there is a server_port field, but the implementation that exists
     // already from making the coordinator before meant that I don't want to change everything suddently
+    std::cout << "reached inside the sync function, this is happening for a reason you aren't crazy pt 16" << std::endl;
 
-    c_stub = std::unique_ptr<SNSCoordinator::Stub>(SNSCoordinator::NewStub(
-               grpc::CreateChannel(
-                    login_info, grpc::InsecureChannelCredentials())));
-
-
-
-    std::shared_ptr<ClientReaderWriter<Heartbeat, Heartbeat>> stream(c_stub->HandleHeartBeats(&context));
-    // std::cout << "We are being blocked here I guess" << std::endl;
-    stream->Write(hb);
-    stream->Read(&HB);
-    sleep(2); // we want to wait to make sure all the synchronizers have 
-    // // their ports in the coordiantor
-    hb.set_server_port("-4"); // this tells the server that we want to get the other ports for sync
-    hb.set_server_id(std::stoi(syncId));; // this will be 0, 1, or 2, and server_ip is not a used field, so we'll use it here 
-    // to tell the coordinator our ID
-    // std::cout << "before second read";
-    stream->Write(hb);
-    stream->Read(&HB);
-    // std::cout << "after second read" << std::endl;
-
-    // the name for this string is bad, it should be list of syncports, but I don't
-    // have time to change it right now
-    std::string listOfMasters = HB.server_port();
-
-    // std::cout << "list of masters " << listOfMasters << std::endl;
-
-
-    std::vector<std::string> portList = splitString(listOfMasters);
-    //split string is defined earlier in the file
-
-    std::vector<std::string> foreignPorts;
-    std::string nativePort;
-    
-    nativePort = HB.server_ip(); // using this to get the clients in our cluster. THe ip
-    // isn't actually an ip, but a port to the master proces.
-    // std::cout << "Native port is " << nativePort << std::endl;
-
-    // std::cout << "There was an error right after this" << std::endl;
-    for (int i  = 0; i < portList.size(); ++i){
-        std::string x = portList[i];
-        // std::cout << "port: " << x << std::endl;
-        if (x == "nothing"){
-            continue; // a port was not provided by a master server
-        }
-
-        // the index is just the cluster that the synchronizer is in, 
-        else if (i != (stoi(syncId) % 3)){
-            foreignPorts.push_back(x);
-        }
+    while(1){
+        // this process shouldn't stop
     }
 
-    // for (auto str: foreignPorts){
-    //     std::cout << "foreignPort " << str << std::endl;
-    // }
-
-    
-
-
-    while (1){
-        // sleep(30); // change this to 30 later on
-        // the c_stub will give us all the ports we need for the servers                
-
-        // the logic here we need is to supply the stubs with their own login_infos
-        ClientContext context;
-
-        login_info = hostname + ":" + nativePort;
-        Reply nativeClientReply;
-        // std::cout << "Right before the stub" << std::endl;
-        stub_ = std::unique_ptr<SNSService::Stub>(SNSService::NewStub(
-                grpc::CreateChannel(
-                        login_info, grpc::InsecureChannelCredentials())));
-
-        Status status = stub_ ->getServerClients(&context, request, &nativeClientReply);
-        // std::cout << "Our clusters cklients are " << nativeClientReply.msg() << std::endl;
-
-
-
-        // sleep(1000);
-        for (int i = 0; i < foreignPorts.size(); ++i){
-            ClientContext sendListContext;
-            ClientContext sendForeignClientsContext;
-            ClientContext sendUpdatesContext;
-
-            // sleep (1000); // this is just here temporarily before we implement other stuff
-
-            Request ourClients;
-            ourClients.set_username(nativeClientReply.msg());
-            // the other synchronizers will access the request's username field
-            // which will actually just be a list of usernames that are foreign to that synchronizer
-
-            login_info = hostname + ":" + foreignPorts[i];
-            ClientContext context;
-
-            stub_ = std::unique_ptr<SNSService::Stub>(SNSService::NewStub(
-               grpc::CreateChannel(
-                    login_info, grpc::InsecureChannelCredentials())));
-            // // so that our cluster knows which new clients have since popped up
-            // std::cout << "Just making sure this change is maintained throughout " << nativeClientReply.msg() << std::endl;
-
-            Status status = stub_->sendListOfClients(&sendListContext, ourClients, &reply);
-
-            //swithcing back to nativePort in native cluster
-
-            login_info = hostname + ":" + nativePort;
-
-            Request nonNativeClients;
-            nonNativeClients.set_username(vecToString(foreignClients));
-            stub_ = std::unique_ptr<SNSService::Stub>(SNSService::NewStub(
-               grpc::CreateChannel(
-                    login_info, grpc::InsecureChannelCredentials())));
-
-            status = stub_ -> sendServerForeignClients(&sendForeignClientsContext, nonNativeClients, &reply);
-
-
-
-
-            // // so that our cluster with servers that are followers get appropriate updates
-            // Status status = s->sendClientUpdates(&context, request, &reply);
+    std::shared_ptr<ClientReaderWriter<Heartbeat, Heartbeat>> stream(c_stub->HandleHeartBeats(&context));
+    std::vector<std::string> syncPorts;
+    int retrievedAllSyncPorts = 0;
+    while (!retrievedAllSyncPorts){
+        std::cout << "Have not yet received all ports for " << syncId << std::endl;
+        stream->Write(hb);
+        stream->Read(&HB);
+        if (HB.server_port() == "-1"){
+            sleep(.5);
+            continue;
         }
+        else{
+            syncPorts = splitString(HB.server_port()); 
+            retrievedAllSyncPorts = 1;
+        }
+    } // end while
+    // now we have all the information we need to update other syncers of any new info
 
-        sleep(4);
+        std::cout << "reached inside the sync function, this is happening for a reason you aren't crazy pt2" << std::endl;
+
+    std::vector<std::string> other_synchronizers;
+    if (syncId == "0"){
+        other_synchronizers.push_back(syncPorts[1]);
+        other_synchronizers.push_back(syncPorts[2]);
+    }
+    else if (syncId == "1"){
+        other_synchronizers.push_back(syncPorts[0]);
+        other_synchronizers.push_back(syncPorts[2]);
+    }
+    else{
+        other_synchronizers.push_back(syncPorts[0]);
+        other_synchronizers.push_back(syncPorts[1]);
+    }
+
+    struct timespec last_mod;
+    last_mod.tv_nsec = 0;
+    last_mod.tv_sec = 0;
+
+
+
+    std::cout << "we aren't reaching here 0" << std::endl;
+
+    while(1){
+
+        /// here we should obtain the key first before we write to the file
+
+// ID is a global variable here
+
+    std::string local_clients = "local_clients_" + syncId + ".txt";
+    struct stat modTime;
+    if (stat(local_clients.c_str(), &modTime) == 0){
+        // this means that we should read stuff in
+
+        if ((last_mod.tv_sec != modTime.st_mtim.tv_sec) || (last_mod.tv_nsec != modTime.st_mtim.tv_nsec)){
+            std::cout << "change was made to the file since last time" << std::endl;
+
+            // APPLY THE LOCK HERE BEFORE TIMESTAMPS APPLIED
+
+            std::string local_clients = "local_clients_" + syncId + ".txt";
+            // we need to request a lock here remember that 
+
+            std::ifstream client_file(local_clients);
+            std::stringstream newClients;
+            newClients << client_file.rdbuf();
+
+            client_file.close();
+            // now here is where we give back the lock
+
+            std::string new_clients = newClients.str();
+
+            last_mod.tv_nsec = modTime.st_mtim.tv_nsec;
+            last_mod.tv_sec = modTime.st_mtim.tv_sec;
+            
+            for (std::string port : other_synchronizers){
+                ClientContext context;
+                login_info = hostname + ":" + port;
+                stub_ = std::unique_ptr<SNSService::Stub>(SNSService::NewStub(
+               grpc::CreateChannel(
+                    login_info, grpc::InsecureChannelCredentials())));
+
+                Request rq;
+                Reply reply;
+                rq.set_username(new_clients);
+                Status status = stub_->sendListOfClients(&context, request, &reply);
+
+
+
+            }
+
+            // now we send the stuff over
+
+
+
+        }
+    }
+    else{
+        // don't do anything, the file wasn't made yet
+        std::cout << "modtime isn't being written to " << std::endl;
+        std::cout << last_mod.tv_nsec << std::endl;
+        std::cout << last_mod.tv_sec << std::endl;
+    }
+
+
+
+
+
+        sleep(5); // we run this loop every 30 seconds for syncing
+
     }
 }

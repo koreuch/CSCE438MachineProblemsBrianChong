@@ -34,7 +34,7 @@ echo 'starting the slave servers'
 ./tsd -c $coordinatorPort -p $slavePort3 -I 2 -t slave &
 
 echo 'starting the syncers'
-./sync -s $syncPort1 -p $coordinatorPort -i 0 &
-./sync -s $syncPort2 -p $coordinatorPort -i 1 &
-./sync -s $syncPort3 -p $coordinatorPort -i 2 &
+./synchro -s $syncPort1 -p $coordinatorPort -i 0 &
+./synchro -s $syncPort2 -p $coordinatorPort -i 1 &
+./synchro -s $syncPort3 -p $coordinatorPort -i 2 &
 

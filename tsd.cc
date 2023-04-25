@@ -48,6 +48,8 @@
 #include <thread>
 #include <unordered_set>
 #include <mutex>
+#include <sys/stat.h>
+
 #define log(severity, msg) LOG(severity) << msg; google::FlushLogFiles(google::severity); 
 
 #include "snsCoordinator.grpc.pb.h"
@@ -95,8 +97,24 @@ using snsCoordinator::Heartbeat;
 
 std::mutex foreign_client_lock;
 
+struct timespec fcTime;
+
+std::unique_ptr<Server> server; // I included this here 
+// for testing purposes, I comment this out later
+
+std::string ID; // use this to get the server id at any time
 
 std::unordered_map<std::string, std::string> followerBank = {};
+
+int vectorContains(std::vector<std::string> vec, std::string c){
+    for (std::string a : vec){
+        if (a == c){
+            return 1;
+        }
+    }
+    return 0;
+}
+
 
 
 std::vector<std::string> splitString(std::string stringList){
@@ -128,6 +146,67 @@ std::string vecToStringPretty(std::vector<std::string> v){
     return returnString;
 }
 
+int updateFollowers(std::string path, std::string uname, std::string myname){
+  // apply the lock here
+  struct stat modTime;
+  if (stat(path.c_str(), &modTime) == -1){
+    // means the filepath doesn't exist
+    std::ofstream client_file(path,std::ios::trunc|std::ios::out|std::ios::in);
+    client_file << (uname + "+" + myname + "+\n");
+    client_file.close();
+    return 1;
+  }
+
+  // read in followers, then edit followers if there is a need
+  std::ifstream fc(path);
+
+  // I guess so don't read in anything if there is nothing to read in
+  std::stringstream foreignClients;
+  foreignClients << fc.rdbuf();
+  fc.close();
+
+  // give back the lock to coordinato
+
+  // std::cout << "The client we are trying to add is " << myname << std::endl;
+  // std::cout << "my file path is " << path << std::endl;
+  
+  int edited = -1;
+  std::string payload = "";
+  int changed = -1;
+
+  std::string line;
+  while (std::getline(foreignClients, line, '\n')){
+    std::vector<std::string> list_of_followers = splitString(line);
+  
+    if (list_of_followers.front() == uname){
+      for (auto x: list_of_followers){
+        if (x == myname){
+          return -1; // means that we are already following anyways
+        }
+      }
+      // if we reached the end of this loop and we didn't find ourself in it
+      edited = 1;
+    }// end if here
+    if (edited == 1){
+      changed = 1;
+      payload += (line + myname + "+\n");
+      edited = -1;
+    }
+    else{
+      payload += (line + "\n");
+    }
+
+  } // while loop where we just read in lines into a string, which we'll write to a file
+  if (changed == -1){
+    payload += (uname + "+" + myname + "+\n");
+  }
+
+  std::ofstream client_file(path,std::ios::trunc|std::ios::out|std::ios::in);
+  client_file << payload;
+  client_file.close();
+
+  return 1;
+}
 
 
 
@@ -316,42 +395,8 @@ class SNSServiceImpl final : public SNSService::Service { // update this so that
   
   private:
     serverClient* heartBeatSender;
-
-  Status sendServerForeignClients(ServerContext* context, const Request* request, Reply* reply) override {
-    log(INFO,"Updating serverse that are present on other clusters");
-    std::vector<std::string> foreignClients = splitString(request -> username());
-
-   foreign_client_lock.lock();
-    if (!foreign_db.empty()){
-      for (int i = 0; i < foreignClients.size(); ++i){
-            int found = 0;
-            for (int j = 0; j < foreign_db.size(); ++j){
-                if (foreign_db[j] == foreignClients[i]){
-                    found = 1;
-                }
-            }
-            if (found == 0){
-                foreign_db.push_back(foreignClients[i]);
-            }
-        }
-    }
-    else{
-      foreign_db = foreignClients;
-    }
-    for (std::string s: foreignClients){
-      std::cout << "S is " << s << std::endl;
-    }
-        for (std::string s: foreign_db){
-      std::cout << "D is " << s << std::endl;
-    }
-     foreign_client_lock.unlock();
-
-
-
-
-    return Status::OK; 
-  }
-
+    std::string foreign_client_list;
+    std::string client_followers;
 
   Status changeServerType(ServerContext* context, ServerReaderWriter<Request, Request>* stream) override {
     Request r;
@@ -382,41 +427,60 @@ class SNSServiceImpl final : public SNSService::Service { // update this so that
     for(it = user.client_followers.begin(); it!=user.client_followers.end(); it++){
       list_reply->add_followers((*it)->username);
     }
+
+    // now read in all the foreign clients so that they can be given to the client
+
+
+    std::string fileName = "foreignClients_" + ID + ".txt";
+    // apply lock here
+    std::ifstream fc(fileName);
+    std::stringstream foreign_file_contents;
+    foreign_file_contents << fc.rdbuf();
+    fc.close();
+    // relinquish lock here i guess
+    std::string foreign_string = foreign_file_contents.str();
+    std::vector<std::string> client_vec = splitString(foreign_string);
+    sort( client_vec.begin(), client_vec.end() );
+    client_vec.erase( unique( client_vec.begin(), client_vec.end() ), client_vec.end() );
+    std::string sorted_string = vecToStringPretty(client_vec);
+    foreign_client_list = sorted_string;
+
+
+
+    std::string followers_list;
+    // for(it = user.client_followers.begin(); it!=user.client_followers.end(); it++){
+    //   list_reply->add_followers((*it)->username);
+    // }
+    //^ we're going to add out of cluster clients to this cluster list after
+    // getting our followers from the file
+    std::string uname = request->username();
+    std::string fpath = "following_" + ID + ".txt";
+    struct stat modTime;
+    if (stat(fpath.c_str(), &modTime) == 0){
+      std::stringstream follower_content;
+      std::ifstream followers_file(fpath);
+      follower_content << followers_file.rdbuf();
+      fc.close();
+      
+      std::string fline;
+      while(std::getline(follower_content, fline, '\n')){
+        std::vector<std::string> lof = splitString(fline);
+        if (lof.front() == uname){
+          lof.erase(lof.begin()); // get rid of the identifier in the file line
+          std::string follower_string = vecToStringPretty(lof);
+          list_reply->add_followers(follower_string);
+        }
+      }
+    } // only open the file if it's been created already
+
+
+
+
     return Status::OK;
   }
 
   Status sendFollows(ServerContext* context, const Request* request, Reply* reply) override {
     log(INFO,"letting master know which non native clusters to send followers");
-    std::stringstream ss(request -> username());
-
-    std::string c;
-    int index = 0;
-    std::string follower;
-    std::string following;
-
-    while (std::getline(ss,c,'-')){
-        std::string addition = "";
-        for (char ch : c){
-            if (ch != ' '){
-                addition += ch;
-            }
-        }
-        if (index == 0){
-          follower = addition;
-        }
-        else{
-          following = addition;
-        }
-        index += 1;
-    }
-    // std::cout << "Follower is" << follower << "following is" << following << "asdf" << std::endl;
-    if (followerBank.find(following) == followerBank.end()){
-      followerBank[following] = follower + ",";
-    }
-    else{
-      followerBank[following] = (followerBank[following] + (follower + ","));
-    }
-    // std::cout << "Checking the bank now" << followerBank[following]<< "IIIIIII follower was " << following << std::endl;
 
 
     
@@ -429,20 +493,75 @@ class SNSServiceImpl final : public SNSService::Service { // update this so that
     std::string username1 = request->username();
     std::string username2 = request->arguments(0);
     int join_index = find_user(username2);
-    if(join_index < 0 || username1 == username2)
-      reply->set_msg("unknown user name");
-    else{
-      Client *user1 = &client_db[find_user(username1)];
-      Client *user2 = &client_db[join_index];
-      if(std::find(user1->client_following.begin(), user1->client_following.end(), user2) != user1->client_following.end()){
-          reply->set_msg("Join Failed -- Already Following User");
-        return Status::OK;
+
+    // i use these for the foreign cluster list access
+    int cluster = std::stoi(username2);
+    cluster = cluster % 3;
+
+    if (std::to_string(cluster) != ID){
+
+    /// here we deal with foreign clients
+      std::string foreign_clients = "foreignClients_" + ID + ".txt";
+      struct stat modTime;
+      if (stat(foreign_clients.c_str(), &modTime) == 0){
+        if ((modTime.st_mtim.tv_sec != fcTime.tv_sec) || (modTime.st_mtim.tv_nsec != fcTime.tv_nsec)){
+          // apply the lock here
+          std::ifstream fc(foreign_clients);
+          std::stringstream foreignClients;
+          foreignClients << fc.rdbuf();
+          // we need to add unlock here too
+
+          std::string fc_string = foreignClients.str();
+          std::vector<std::string> fc_list = splitString(fc_string);
+
+          if (vectorContains(fc_list, username2)){
+            // if the list of foreign clients contains what we need, then we can proceed
+            std::string followerFilePath = "followers_" + ID + ".txt"; // this file has a list of foreign clients
+            // that our native clients follow and who follows who            
+            int updated = updateFollowers(followerFilePath, username2, username1);
+            if (updated == 1){
+              reply->set_msg("Join Successful");
+            }
+            else{
+              reply->set_msg("Join Failed -- Already Following User");
+            }
+          } // if the file we read in of foreign clients even has the client in question
+          else{
+            reply->set_msg("unknown user name");
+          }
+        }
+        else{
+          // file hasn't been updated yet so we don't have to read form it
+          reply->set_msg("unknown user name");
+        }
+      }// if an actual foreign clients file even exists
+
+
+      else{
+        // followers file doesn't exist so we don't do anything
+        reply->set_msg("unknown user name");
       }
-      user1->client_following.push_back(user2);
-      user2->client_followers.push_back(user1);
-      reply->set_msg("Join Successful");
-    }
-    std::cout << "Return status is ok" << std::endl;
+
+
+    } // this if is if we're outside the cluster 
+
+
+
+  else{
+      if(join_index < 0 || username1 == username2)
+        reply->set_msg("unknown user name");
+      else{
+        Client *user1 = &client_db[find_user(username1)];
+        Client *user2 = &client_db[join_index];
+        if(std::find(user1->client_following.begin(), user1->client_following.end(), user2) != user1->client_following.end()){
+            reply->set_msg("Join Failed -- Already Following User");
+          return Status::OK;
+        }
+        user1->client_following.push_back(user2);
+        user2->client_followers.push_back(user1);
+        reply->set_msg("Join Successful");
+      }
+  }
     return Status::OK; 
   }
 
@@ -488,12 +607,29 @@ class SNSServiceImpl final : public SNSService::Service { // update this so that
         user->connected = true;
       }
     }
+// here we add to the list of clients that are in this cluster
+
+
+
+// ID is a global variable here
+
+    std::string local_clients = "local_clients_" + ID + ".txt";
+    // we want to add a client to the file each time that one login so the syncer can send this
+    // info to other files
+    std::ofstream client_file(local_clients,std::ios::app|std::ios::out|std::ios::in);
+    client_file << (username + "+");
+    std::cout << "Adding to the file, local clients" << std::endl;
+
+    client_file.close();
+/// give back the file lock
+
+
     return Status::OK;
   }
 
   Status getForeignClients(ServerContext* context, const Request* request, Reply* reply) override {
 
-    reply -> set_msg(vecToStringPretty(foreign_db));
+    reply -> set_msg(foreign_client_list);
     return Status::OK;
   }
 
@@ -630,7 +766,7 @@ void RunServer(std::string port_no, serverClient* heartBeatSender) {
   ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
-  std::unique_ptr<Server> server(builder.BuildAndStart());
+  std::unique_ptr<Server> server = (builder.BuildAndStart());
   std::cout << "Server listening on " << server_address << std::endl;
   log(INFO, "Server listening on "+server_address);
 
@@ -646,9 +782,6 @@ int main(int argc, char** argv) {
 
   
   std::string serverName = "server1";
-
-
-  
   std::string CoordinatorPort = "3010";
   std::string CoordinatorIp = "3010";
   std::string  serverId = "1";
@@ -657,6 +790,9 @@ int main(int argc, char** argv) {
 
 
   std::string port = "3010";
+
+  fcTime.tv_nsec = 0;
+  fcTime.tv_sec = 0;
   
   int opt = 0; 
   // get opt takes single character flags, so these were modified from how they appeared in the file
@@ -677,17 +813,16 @@ int main(int argc, char** argv) {
     }
   }
 
-  // std::cout << serverType << " THis is the ytpe of the server" << std::endl;
-  // std::cout << "The ip is " << CoordinatorIp << std::endl;
-  // std::cout << " The port used by server is " << port << std::endl;
-  // std::cout << "The coordinator port is " << CoordinatorPort << std::endl;
-  // std::cout << "The id of the server is " << serverId << std::endl;
-  // std::cout << "BREAK" << std::endl;
+  ID = serverId;
+
   serverClient* heartBeatSender = new serverClient("localhost", serverId, CoordinatorPort, serverType, port);
   // heartBeatSender.sendBeats(); // just public acessor for send heartbeats
   std::thread heartBeatThread(coordinatorThreadFunction, heartBeatSender);
   RunServer(port, heartBeatSender);
   heartBeatThread.join();
+  server -> Shutdown(); // comment this out when done with testing. Right now
+  // the server has global scope since it makes it easier to kill all the processes for retestingzs
+  std::cout << "Reached this point after all the heart beats were sent" << std::endl;
   
     std::string log_file_name = std::string("server-") + port;
     google::InitGoogleLogging(log_file_name.c_str());
