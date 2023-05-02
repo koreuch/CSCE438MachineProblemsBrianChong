@@ -35,8 +35,9 @@ import org.apache.hadoop.mapreduce.lib.input.LineRecordReader;
 
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 
+import java.util.Arrays;
 
-public class WordCount {//
+public class WordCount2 {//
 
 
 public static class fourLineReader extends LineRecordReader{
@@ -60,8 +61,11 @@ public static class fourLineReader extends LineRecordReader{
         while (linesRead != 4){
           super.nextKeyValue();
           Text cv = super.getCurrentValue();
-          if (cv != null){
-            fourLines = (fourLines + super.getCurrentValue().toString()) + "\n";
+          if (cv == null){
+            return false;
+          }
+          else{
+            fourLines = (fourLines + cv.toString()) + "\n";
             linesRead = linesRead + 1;
           }
         }// end while 
@@ -83,12 +87,21 @@ public static class fourLineReader extends LineRecordReader{
                     ) throws IOException, InterruptedException {
       StringTokenizer itr = new StringTokenizer(value.toString(), "\n");
       // int num = 0;
-      String s1=new String("");
-      String s2=new String("");
       int iteration = 0;
+      String hour = "";
       while (itr.hasMoreTokens()) {
-        word.set(itr.nextToken() + " " + Integer.toString(iteration));
-        context.write(word, one);
+        String str = itr.nextToken();
+        String[] arr = str.split(" ");
+        if ("T".equals(arr[0]) && iteration == 0){
+          String[] arr1 = arr[2].split(":");
+          hour = new String(arr1[0]);
+        }
+        if (iteration == 2){
+          if (Arrays.asList(arr).contains("sleep")){
+            word.set(hour + ",");
+            context.write(word, one);
+          }
+        }
         iteration = iteration + 1;
       }
     }
@@ -135,7 +148,7 @@ public static class fourLineFormat extends TextInputFormat {
     conf.set("mapreduce.framework.name", "yarn");
     Job job = Job.getInstance(conf);
     job.setInputFormatClass(fourLineFormat.class);
-    job.setJarByClass(WordCount.class);
+    job.setJarByClass(WordCount2.class);
     job.setMapperClass(TokenizerMapper.class);
     job.setCombinerClass(IntSumReducer.class);
     job.setReducerClass(IntSumReducer.class);
