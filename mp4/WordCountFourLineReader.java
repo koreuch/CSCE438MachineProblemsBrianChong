@@ -1,7 +1,10 @@
 import java.io.IOException;
 import java.util.StringTokenizer;
 
+import org.apache.hadoop.mapreduce.lib.input.NLineInputFormat;
+
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.mapreduce.JobContext;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.io.IntWritable;
@@ -28,8 +31,56 @@ import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.mapreduce.RecordReader;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 
+import org.apache.hadoop.mapreduce.lib.input.LineRecordReader;
 
-public class WordCount {//
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
+
+import java.util.Arrays;
+
+public class WordCountFourLineReader {//
+
+
+public static class fourLineReader extends LineRecordReader{
+
+    public fourLineReader(){
+      super();
+      value = new Text();
+    }
+
+    
+    private Text value; // i need my own value that isn't in the super function
+    
+    public Text getCurrentValue(){
+        return value;
+    }
+
+    public boolean nextKeyValue() throws IOException {
+        // do this four times
+        String fourLines = new String("");
+        int linesRead = 0;
+        while (linesRead != 4){
+          super.nextKeyValue(); // "\n"
+          Text cv = super.getCurrentValue();
+          if (cv == null){
+            return false;
+          }
+          else{
+            fourLines = (fourLines + cv.toString());
+            
+            linesRead = linesRead + 1; 
+            
+            if (linesRead < 4) {
+              fourLines = fourLines + "\n";
+            }
+          }
+        }// end while 
+      value = new Text(fourLines);
+      return true;
+    }
+
+  }
+  
+
 
   public static class TokenizerMapper
        extends Mapper<Object, Text, Text, IntWritable>{
@@ -39,33 +90,33 @@ public class WordCount {//
 
     public void map(Object key, Text value, Context context
                     ) throws IOException, InterruptedException {
-      StringTokenizer itr = new StringTokenizer(value.toString());
-      String s1=new String("");
+      // int num = 0;
       int iteration = 0;
-      while (itr.hasMoreTokens()) {
-        if (iteration == 0){
-          s1 = new String(itr.nextToken());
-          iteration = iteration + 1;
-        }
-        else if (iteration == 1){
-          // s2 = new String(itr.nextToken());
-          itr.nextToken();
-          iteration = iteration + 1;
-        }
-        else if (iteration == 2){
-          String s = new String(itr.nextToken());
-          String[] time = s.split(":");
-          iteration = iteration + 1;
-          if (s1.equals("T")){
-            word.set(time[0] + ",");
-            context.write(word, one);
+      String hour = "";
+      String[] arr = (value.toString()).split("[\\s\n]+");
+      boolean readT = false;
+      // word.set(value.toString());
+      // context.write(word,one);
+      for (int i = 0; i < arr.length; i ++) {
+        //   word.set(arr[i]);
+        // context.write (word,one);
+        // continue;
+          if ("T".equals(arr[0]) && !readT) {
+            String[] arr1 = arr[2].split(":");
+            hour = new String(arr1[0]);
+            readT = true;
+            continue;
           }
-        }
-
-        else{
-          break;
-        }
-
+          if (arr[i].contains("sleep")){
+            if (!readT) {
+              continue;
+            }
+            word.set(hour + ",");
+            context.write(word, one);
+            break;
+          }
+        
+        
       }
     }
   }
@@ -86,16 +137,32 @@ public class WordCount {//
     }
   }
 
+public static class fourLineFormat extends TextInputFormat {
+  public fourLineFormat() {
+    
+  }
+
+  public RecordReader<LongWritable, Text> createRecordReader(InputSplit split, TaskAttemptContext context) {
+    fourLineReader reader = new fourLineReader();
+    try {
+      reader.initialize(split, context);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    return reader;
+  }
+}
+
+
+
+  
+
   public static void main(String[] args) throws Exception {
     Configuration conf = new Configuration();
-    FileSystem fileSystem = FileSystem.get(conf);
-    // long blockSize = fileSystem.getDefaultBlockSize(new Path("hdfs://namenode:9000/user/root/data/tweets.txt"));
-
-
-    conf.set("mapreduce.input.fileinputformat.split.minsize", String.valueOf(fileSystem.getDefaultBlockSize(new Path("hdfs://namenode:9000/user/root/data/tweets.txt")) * 4));
-
-    Job job = Job.getInstance(conf, "word count");
-    job.setJarByClass(WordCount.class);
+    conf.set("mapreduce.framework.name", "yarn");
+    Job job = Job.getInstance(conf);
+    job.setInputFormatClass(fourLineFormat.class);
+    job.setJarByClass(WordCountFourLineReader.class);
     job.setMapperClass(TokenizerMapper.class);
     job.setCombinerClass(IntSumReducer.class);
     job.setReducerClass(IntSumReducer.class);
