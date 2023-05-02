@@ -37,7 +37,7 @@ import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 
 import java.util.Arrays;
 
-public class WordCount2 {//
+public class WordCount{//
 
 
 public static class fourLineReader extends LineRecordReader{
@@ -98,7 +98,7 @@ public static class fourLineReader extends LineRecordReader{
         }
         if (iteration == 2){
           if (Arrays.asList(arr).contains("sleep")){
-            word.set(hour + ",");
+            word.set(hour);
             context.write(word, one);
           }
         }
@@ -148,7 +148,7 @@ public static class fourLineFormat extends TextInputFormat {
     conf.set("mapreduce.framework.name", "yarn");
     Job job = Job.getInstance(conf);
     job.setInputFormatClass(fourLineFormat.class);
-    job.setJarByClass(WordCount2.class);
+    job.setJarByClass(WordCount.class);
     job.setMapperClass(TokenizerMapper.class);
     job.setCombinerClass(IntSumReducer.class);
     job.setReducerClass(IntSumReducer.class);
