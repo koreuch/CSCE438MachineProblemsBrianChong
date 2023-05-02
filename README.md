@@ -6,3 +6,5 @@ variables like masterPort=<whatever port you want to use>
 also run the runProcesses.sh to run all the servers. You can use the killScript.sh to to kill all the processes that you start, but I'm not
 sure that's safe use at your own risk
 
+FOR MP4
+got to folder mp4
